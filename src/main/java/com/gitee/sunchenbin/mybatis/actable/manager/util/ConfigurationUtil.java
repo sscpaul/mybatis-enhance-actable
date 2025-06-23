@@ -36,6 +36,12 @@ public class ConfigurationUtil implements ApplicationContextAware {
 	/**
 	 * 旧的配置key，兼容老版本用的
 	 */
+	@Value(Constants.MODEL_FILTERS_KEY_VALUE)
+	private String modelFilters;
+
+	/**
+	 * 旧的配置key，兼容老版本用的
+	 */
 	@Value(Constants.DATABASE_TYPE_KEY_VALUE)
 	private String databaseType;
 
@@ -50,6 +56,12 @@ public class ConfigurationUtil implements ApplicationContextAware {
 	 */
 	@Value(Constants.ACTABLE_MODEL_PACK_KEY_VALUE)
 	private String acmodelPack;
+
+	/**
+	 * 新的配置key
+	 */
+	@Value(Constants.ACTABLE_MODEL_FILTERS_KEY_VALUE)
+	private String acmodelFilters;
 
 	/**
 	 * 新的配置key
@@ -119,6 +131,13 @@ public class ConfigurationUtil implements ApplicationContextAware {
 				return acmodelPack;
 			}
 		}
+		if(Constants.ACTABLE_MODEL_FILTERS_KEY.equals(key) || Constants.MODEL_FILTERS_KEY.equals(key)) {
+			if (!Constants.NULL.equals(modelFilters)){
+				return modelFilters;
+			}else if(!Constants.NULL.equals(acmodelFilters)){
+				return acmodelFilters;
+			}
+		}
 		if(Constants.ACTABLE_TABLE_AUTO_KEY.equals(key) || Constants.TABLE_AUTO_KEY.equals(key)) {
 			if (!Constants.NULL.equals(tableAuto)){
 				return tableAuto;
@@ -146,6 +165,12 @@ public class ConfigurationUtil implements ApplicationContextAware {
 			object = properties.get(Constants.MODEL_PACK_KEY);
 			if (null == object){
 				object = properties.get(Constants.ACTABLE_MODEL_PACK_KEY);
+			}
+		}
+		if(Constants.ACTABLE_MODEL_FILTERS_KEY.equals(key) || Constants.MODEL_FILTERS_KEY.equals(key)) {
+			object = properties.get(Constants.MODEL_FILTERS_KEY);
+			if (null == object){
+				object = properties.get(Constants.ACTABLE_MODEL_FILTERS_KEY);
 			}
 		}
 		if(Constants.ACTABLE_TABLE_AUTO_KEY.equals(key) || Constants.TABLE_AUTO_KEY.equals(key)) {

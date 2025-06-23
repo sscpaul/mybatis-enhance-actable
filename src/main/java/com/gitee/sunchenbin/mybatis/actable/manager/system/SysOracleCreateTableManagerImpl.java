@@ -34,7 +34,12 @@ public class SysOracleCreateTableManagerImpl implements SysOracleCreateTableMana
 	 * 要扫描的model所在的pack
 	 */
 	private String pack;
-	
+
+	/**
+	 * 要扫描的model的TypeFilter过滤器组
+	 */
+	private String filters;
+
 	/**
 	 * 自动创建模式：update表示更新，create表示删除原表重新创建
 	 */
@@ -46,6 +51,7 @@ public class SysOracleCreateTableManagerImpl implements SysOracleCreateTableMana
 	public void createOracleTable(){
 		// 读取配置信息
 		pack = springContextUtil.getConfig(Constants.MODEL_PACK_KEY);
+		filters = springContextUtil.getConfig(Constants.MODEL_FILTERS_KEY);
 		tableAuto = springContextUtil.getConfig(Constants.TABLE_AUTO_KEY);
 		
 		// 不做任何事情

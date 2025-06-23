@@ -23,19 +23,17 @@ import com.gitee.sunchenbin.mybatis.actable.utils.ColumnUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.type.filter.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
+import org.apache.commons.lang.StringUtils;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 项目启动时自动扫描配置的目录中的model，根据配置的规则自动创建或更新表 该逻辑只适用于mysql，其他数据库尚且需要另外扩展，因为sql的语法不同
@@ -61,6 +59,11 @@ public class SysMysqlCreateTableManagerImpl implements SysMysqlCreateTableManage
 	private static String pack = null;
 
 	/**
+	 * 要扫描的model的TypeFilter过滤器组
+	 */
+	private static String filters = null;
+
+	/**
 	 * 自动创建模式：update表示更新，create表示删除原表重新创建
 	 */
 	private static String tableAuto = null;
@@ -71,6 +74,7 @@ public class SysMysqlCreateTableManagerImpl implements SysMysqlCreateTableManage
 	public void createMysqlTable() {
 		// 读取配置信息
 		pack = springContextUtil.getConfig(Constants.MODEL_PACK_KEY);
+		filters = springContextUtil.getConfig(Constants.MODEL_FILTERS_KEY);
 		tableAuto = springContextUtil.getConfig(Constants.TABLE_AUTO_KEY);
 
 		// 不做任何事情
@@ -88,8 +92,18 @@ public class SysMysqlCreateTableManagerImpl implements SysMysqlCreateTableManage
 		// 拆成多个pack，支持多个
 		String[] packs = pack.split(",|;");
 
+		// 定义包含过滤器列表和排除过滤器列表
+		List<TypeFilter> includeFilters = new LinkedList<TypeFilter>();
+		List<TypeFilter> excludeFilters = new LinkedList<TypeFilter>();
+		// 将默认的几个表注解添加到包含过滤器列表中
+		includeFilters.add(new AnnotationTypeFilter(Table.class));
+		includeFilters.add(new AnnotationTypeFilter(TableName.class));
+		includeFilters.add(new AnnotationTypeFilter(javax.persistence.Table.class));
+		// 根据配置的过滤器字符串解析到包含过滤器列表和排除过滤器列表
+		tryParseFilter(filters, includeFilters, excludeFilters);
+
 		// 从包package中获取所有的Class
-		Set<Class> classes = ClassScaner.scan(packs, Table.class, TableName.class, javax.persistence.Table.class);
+		Set<Class> classes = ClassScaner.scan(packs, includeFilters, excludeFilters);
 
 		// 初始化用于存储各种操作表结构的容器
 		Map<String, Map<String, TableConfig>> baseTableMap = initTableMap();
@@ -113,6 +127,118 @@ public class SysMysqlCreateTableManagerImpl implements SysMysqlCreateTableManage
 
 		// 根据传入的map，分别去创建或修改表结构
 		createOrModifyTableConstruct(baseTableMap);
+	}
+
+	/**
+	 * 根据传入的过滤字符串，将过滤字符串解析成包含过滤器列表和排除过滤器列表
+	 *
+	 * @param filters
+	 *            过滤字符串,支持多个过滤器，用换行\n隔开
+	 *            每个过滤器由过滤器类型和过滤器内容组成，过滤器内容用方括号[]包起来
+	 *            每个过滤器内容可以包含多值，用逗号,隔开
+	 *            过滤器类型有：AnnotationTypeFilter、AspectJTypeFilter、AssignableTypeFilter、RegexPatternTypeFilter
+	 *            		如果在过滤器类型前有符号+或没有符合表示包含过滤器，有符合-表示排除过滤器
+	 *            例子: +AnnotationTypeFilter[Table,TableName,javax.persistence.Table]
+	 *            	   -AssignableTypeFilter[framework.core.BaseDO,framework.core.TenantDO]
+	 * @param includeFilters
+	 *            包含过滤器列表
+	 * @param excludeFilters
+	 *            排除过滤器列表
+	 */
+	private void tryParseFilter(String filters, List<TypeFilter> includeFilters, List<TypeFilter> excludeFilters) {
+		if (StringUtils.isBlank(filters) || (includeFilters == null && excludeFilters == null))
+			return;
+
+		// 分解多个过滤器
+		String[] filtersArray = filters.split("\n");
+		for (String orginFilter : filtersArray) {
+			// 每个过滤器去除字符串首尾的空白符，空白符主要包括' '，'\t'，'\r'，'\n'，'\u000B'，'\f'，'\u001C'，'\u001D' ，'\u001E'，'\u001F'
+			orginFilter = StringUtils.stripToEmpty(orginFilter);
+			if (orginFilter.length() == 0) {
+				continue;
+			}
+
+			// 判断是包含过滤器还是排除过滤器，并去除前面的+-符号
+			String filter = orginFilter;
+			boolean exclude = filter.startsWith("-");
+			if (exclude || filter.startsWith("+")) {
+				filter = filter.substring(1);
+			}
+
+			// 分解过滤器类型和过滤器内容
+			// 正则表达式：^(.*?)\[(.*?)\]$，匹配 TypeFilter[Content] 格式
+			// ^ 开始
+			// (.*?) 非贪婪匹配前缀（允许空）
+			// \[(.*?)\] 匹配方括号及内容（内容非贪婪匹配）
+			// $ 结束
+			String regex = "^(.*?)\\[(.*?)\\]$";
+			Pattern pattern = Pattern.compile(regex);
+			Matcher matcher = pattern.matcher(filter);
+
+			if (matcher.find()) {
+				String typeFilter = matcher.group(1);		// 获取过滤器类型
+				String filterContent = matcher.group(2);		// 获取方括号内的过滤器内容
+				if(StringUtils.isBlank(typeFilter) || StringUtils.isEmpty(filterContent)) {
+					log.warn("过滤器{}定义的格式不正确", orginFilter);
+					continue;
+				}
+				typeFilter = typeFilter.trim();
+
+				// 过滤器内容包含多值用逗号,隔开，进行分解
+				String[] filterList = filterContent.split(",");
+				for (String curFilter : filterList) {
+					if (StringUtils.isNotEmpty(curFilter)) {
+						try {
+							switch (typeFilter) {
+								case "AnnotationTypeFilter":
+									Class<? extends Annotation> classAnnotation = (Class<? extends Annotation>)Class.forName(curFilter);
+									AnnotationTypeFilter annotationTypeFilter = new AnnotationTypeFilter(classAnnotation);
+									if (exclude) {
+										excludeFilters.add(annotationTypeFilter);
+									} else {
+										includeFilters.add(annotationTypeFilter);
+									}
+									break;
+								case "AssignableTypeFilter":
+									Class<?> classAssignable = Class.forName(curFilter);
+									AssignableTypeFilter assignableTypeFilter = new AssignableTypeFilter(classAssignable);
+									if (exclude) {
+										excludeFilters.add(assignableTypeFilter);
+									} else {
+										includeFilters.add(assignableTypeFilter);
+									}
+									break;
+								case "RegexPatternTypeFilter":
+									Pattern curPattern = Pattern.compile(curFilter);
+									RegexPatternTypeFilter regexPatternTypeFilter = new RegexPatternTypeFilter(curPattern);
+									if (exclude) {
+										excludeFilters.add(regexPatternTypeFilter);
+									} else {
+										includeFilters.add(regexPatternTypeFilter);
+									}
+									break;
+								case "AspectJTypeFilter":
+									AspectJTypeFilter aspectJTypeFilter = new AspectJTypeFilter(curFilter, this.getClass().getClassLoader());
+									if (exclude) {
+										excludeFilters.add(aspectJTypeFilter);
+									} else {
+										includeFilters.add(aspectJTypeFilter);
+									}
+									break;
+								default:
+									log.warn("过滤器{}定义的格式不正确，过滤器类型未知", orginFilter);
+									break;
+							}
+						} catch (Exception e) {
+							log.warn("添加过滤器{}发生异常：{}", orginFilter, e.getMessage());
+							e.printStackTrace();
+						}
+					}
+				}
+			} else {
+				log.warn("过滤器{}定义的格式不正确", orginFilter);
+			}
+		}
 	}
 
 	private void checkTableName(List<String> tableNames, Class<?> clas) {

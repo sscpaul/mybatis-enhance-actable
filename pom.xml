@@ -21,6 +21,7 @@
 		<maven-surefire-plugin.version>3.2.2</maven-surefire-plugin.version>
 		<maven-compiler-plugin.version>3.0</maven-compiler-plugin.version>
 		<maven-release-plugin.version>3.0.0</maven-release-plugin.version>
+		<maven-source-plugin.version>2.2.1</maven-source-plugin.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 	<dependencies>
@@ -92,6 +93,21 @@
 			</resource>
 		</resources>
 		<plugins>
+			<!-- maven-source-plugin 插件，生成源代码包，便于调试 -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-source-plugin</artifactId>
+				<version>${maven-source-plugin.version}</version>
+				<executions>
+					<execution>
+						<id>attach-sources</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar-no-fork</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 			<!-- maven-compiler-plugin 插件 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

@@ -31,6 +31,26 @@ public class ClassScaner implements ResourceLoaderAware {
     private ResourcePatternResolver resourcePatternResolver = new PathMatchingResourcePatternResolver();
     private MetadataReaderFactory metadataReaderFactory = new CachingMetadataReaderFactory(this.resourcePatternResolver);
 
+    public static Set<Class> scan(String[] basePackages, List<TypeFilter> includeFilters, List<TypeFilter> excludeFilters) {
+        ClassScaner cs = new ClassScaner();
+
+        if(includeFilters != null && includeFilters.size() > 0) {
+            for (TypeFilter filter : includeFilters) {
+                cs.addIncludeFilter(filter);
+            }
+        }
+        if(excludeFilters != null && excludeFilters.size() > 0) {
+            for (TypeFilter filter : excludeFilters) {
+                cs.addExcludeFilter(filter);
+            }
+        }
+
+        Set<Class> classes = new HashSet<Class>();
+        for (String s : basePackages)
+            classes.addAll(cs.doScan(s));
+        return classes;
+    }
+
     public static Set<Class> scan(String[] basePackages,
                                   Class<? extends Annotation>... annotations) {
         ClassScaner cs = new ClassScaner();

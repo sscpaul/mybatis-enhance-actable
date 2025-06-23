@@ -10,8 +10,11 @@ import com.gitee.sunchenbin.mybatis.actable.command.MySqlTypeAndLength;
 import com.gitee.sunchenbin.mybatis.actable.constants.MySqlCharsetConstant;
 import com.gitee.sunchenbin.mybatis.actable.constants.MySqlEngineConstant;
 import com.gitee.sunchenbin.mybatis.actable.constants.MySqlTypeConstant;
+import com.gitee.sunchenbin.mybatis.actable.manager.system.SysMysqlCreateTableManagerImpl;
 import com.google.common.base.CaseFormat;
 import org.apache.commons.lang.time.DateFormatUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.StringUtils;
 
@@ -21,6 +24,7 @@ import java.util.Arrays;
 import java.util.Date;
 
 public class ColumnUtils {
+    private static final Logger log = LoggerFactory.getLogger(SysMysqlCreateTableManagerImpl.class);
 
     public static final String DEFAULTVALUE = "DEFAULT";
 
@@ -253,7 +257,9 @@ public class ColumnUtils {
         // 类型为空根据字段类型去默认匹配类型
         MySqlTypeConstant mysqlType = JavaToMysqlType.javaToMysqlTypeMap.get(field.getGenericType().toString());
         if (mysqlType == null){
-            throw new RuntimeException("字段名：" + field.getName() +"不支持" + field.getGenericType().toString() + "类型转换到mysql类型，仅支持JavaToMysqlType类中的类型默认转换，异常抛出！");
+            // 如果类型不在javaToMysqlTypeMap范围内，则转为字符串类型（VARCHAR）并输出警告日志
+            log.warn("实体类：" + clasz.getName() + "字段名：" + field.getName() +"的java类型：" + field.getGenericType().toString() + "没有对应的mysql类型，已转为VARCHAR类型");
+            return buildMySqlTypeAndLength(field, MySqlTypeConstant.VARCHAR.toString().toLowerCase(), 400, 0);
         }
         String sqlType = mysqlType.toString().toLowerCase();
         // 默认类型可以使用column来设置长度
@@ -360,7 +366,7 @@ public class ColumnUtils {
     }
 
     private static boolean isSimple(Class<?> clasz) {
-        boolean isSimple = false;
+        boolean isSimple = true;
         Table tableName = clasz.getAnnotation(Table.class);
         if (tableName != null){
             isSimple = tableName.isSimple();
